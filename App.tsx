@@ -1,6 +1,4 @@
 import React, { useState, useCallback } from 'react';
-import ImageUploader from './components/ImageUploader';
-import LoadingIndicator from './components/LoadingIndicator';
 import Editor from './components/Editor';
 import Header from './components/Header';
 import { generateTemplateFromImage, creativeRemixImage } from './services/aiService';
@@ -16,6 +14,8 @@ const App: React.FC = () => {
 
   const handleImageUpload = useCallback(async (file: File) => {
     setError(null);
+    setTemplate(null);
+    setUploadedImage(null);
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result as string;
@@ -47,12 +47,12 @@ const App: React.FC = () => {
     setError(null);
   }, []);
 
-  const handleCreativeRemix = useCallback(async (userPrompt: string, maskImage: string | null, creativity: number, renderingStyle: string) => {
+  const handleCreativeRemix = useCallback(async (userPrompt: string, maskImage: string | null, creativity: number, renderingStyle: string, allTextContent: string) => {
     if (!template || !uploadedImage) return;
     setIsRemixing(true);
     setError(null);
     try {
-      const newImageUrl = await creativeRemixImage(userPrompt, template.styleDescription, uploadedImage, maskImage, creativity, renderingStyle);
+      const newImageUrl = await creativeRemixImage(userPrompt, template.styleDescription, uploadedImage, maskImage, creativity, renderingStyle, allTextContent);
       setTemplate(prev => prev ? { ...prev, generatedImageUrl: newImageUrl } : null);
     } catch (err) {
       console.error("Failed to remix image:", err);
@@ -62,30 +62,22 @@ const App: React.FC = () => {
     }
   }, [template, uploadedImage]);
 
-  const renderContent = () => {
-    if (isAnalyzing) {
-      return <LoadingIndicator />;
-    }
-    if (template && uploadedImage) {
-      return (
-        <Editor
-          referenceImage={uploadedImage}
-          template={template}
-          textElements={editedTextElements}
-          onTextElementsChange={setEditedTextElements}
-          onCreativeRemix={handleCreativeRemix}
-          isRemixing={isRemixing}
-        />
-      );
-    }
-    return <ImageUploader onImageUpload={handleImageUpload} error={error} />;
-  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
       <Header onNewTemplate={handleReset} showDownload={!!template} />
       <main className="flex-grow flex items-center justify-center p-4 md:p-8">
-        {renderContent()}
+        <Editor
+          uploadedImage={uploadedImage}
+          template={template}
+          textElements={editedTextElements}
+          onTextElementsChange={setEditedTextElements}
+          onCreativeRemix={handleCreativeRemix}
+          isRemixing={isRemixing}
+          onImageUpload={handleImageUpload}
+          isAnalyzing={isAnalyzing}
+          error={error}
+        />
       </main>
     </div>
   );

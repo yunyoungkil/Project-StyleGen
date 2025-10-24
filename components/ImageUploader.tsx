@@ -62,17 +62,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, error }) =
   };
 
   const borderColor = isDragging ? 'border-blue-500' : 'border-gray-600';
-  const bgColor = isDragging ? 'bg-gray-800' : 'bg-gray-800/50';
+  const bgColor = isDragging ? 'bg-gray-700' : 'bg-gray-800';
 
   return (
-    <div className="w-full max-w-2xl text-center">
-      <h1 className="text-4xl md:text-5xl font-extrabold mb-4 text-white">AI 이미지 템플릿 생성기</h1>
-      <p className="text-lg md:text-xl text-gray-400 mb-8">참조 이미지를 끌어다 놓으면 즉시 편집 가능한 템플릿이 생성됩니다.</p>
-      
+    <div className="w-full h-full flex flex-col justify-center text-center p-4">
       {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg relative mb-6 text-left" role="alert">
+        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg relative mb-4 text-left" role="alert">
           <strong className="font-bold block">생성 실패</strong>
-          <span className="block">{error}</span>
+          <span className="block text-sm">{error}</span>
         </div>
       )}
 
@@ -81,11 +78,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, error }) =
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`relative flex flex-col items-center justify-center w-full p-12 border-2 ${borderColor} border-dashed rounded-xl transition-all duration-300 ${bgColor}`}
+        className={`relative flex flex-col items-center justify-center w-full h-full border-2 ${borderColor} border-dashed rounded-xl transition-all duration-300 ${bgColor}`}
       >
         <UploadIcon />
-        <p className="mt-4 text-gray-300">
-          <span className="font-semibold text-blue-400">이곳에 이미지를 드래그 앤 드롭</span>하거나 클릭하여 업로드하세요
+        <p className="mt-4 text-gray-300 text-sm">
+          <span className="font-semibold text-blue-400">이곳에 드래그</span> 또는 클릭
         </p>
         <input
           type="file"
@@ -95,7 +92,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, error }) =
           accept="image/png, image/jpeg, image/webp"
         />
       </div>
-      <p className="mt-4 text-sm text-gray-500">PNG, JPG, WEBP 파일을 지원합니다.</p>
+      <p className="mt-2 text-xs text-gray-500">PNG, JPG, WEBP</p>
     </div>
   );
 };

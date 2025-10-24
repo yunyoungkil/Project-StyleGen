@@ -1,10 +1,10 @@
-
 export interface TextElement {
   id: string;
   content: string;
   x: number; // percentage
   y: number; // percentage
   width: number; // percentage
+  height: number; // percentage
   fontSize: number; // vw unit
   color: string;
   fontFamily: string;

@@ -2,15 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { Template, TextElement } from '../types';
 import MaskingToolbar from './MaskingToolbar';
 import MaskingCanvas, { type MaskingCanvasRef } from './MaskingCanvas';
+import ImageUploader from './ImageUploader';
+import LoadingIndicator from './LoadingIndicator';
 
 
 interface EditorProps {
-  referenceImage: string;
-  template: Template;
+  uploadedImage: string | null;
+  template: Template | null;
   textElements: TextElement[];
   onTextElementsChange: React.Dispatch<React.SetStateAction<TextElement[]>>;
-  onCreativeRemix: (prompt: string, mask: string | null, creativity: number, renderingStyle: string) => void;
+  onCreativeRemix: (prompt: string, mask: string | null, creativity: number, renderingStyle: string, allTextContent: string) => void;
   isRemixing: boolean;
+  onImageUpload: (file: File) => void;
+  isAnalyzing: boolean;
+  error: string | null;
 }
 
 interface DraggableTextProps {
@@ -83,8 +88,18 @@ const DraggableText: React.FC<DraggableTextProps> = ({ element, onUpdate, onSele
 };
 
 
-const Editor: React.FC<EditorProps> = ({ referenceImage, template, textElements, onTextElementsChange, onCreativeRemix, isRemixing }) => {
-  const [activeElementId, setActiveElementId] = useState<string | null>(textElements[0]?.id || null);
+const Editor: React.FC<EditorProps> = ({ 
+  uploadedImage, 
+  template, 
+  textElements, 
+  onTextElementsChange, 
+  onCreativeRemix, 
+  isRemixing,
+  onImageUpload,
+  isAnalyzing,
+  error
+}) => {
+  const [activeElementId, setActiveElementId] = useState<string | null>(null);
   const [remixPrompt, setRemixPrompt] = useState('');
   const [creativity, setCreativity] = useState<number>(50);
   const [renderingStyle, setRenderingStyle] = useState('Photorealistic');
@@ -93,6 +108,14 @@ const Editor: React.FC<EditorProps> = ({ referenceImage, template, textElements,
   const [maskTool, setMaskTool] = useState<'brush' | 'eraser'>('brush');
   const [brushSize, setBrushSize] = useState<number>(40);
   const maskingCanvasRef = useRef<MaskingCanvasRef>(null);
+
+  useEffect(() => {
+    if (template && textElements.length > 0) {
+      setActiveElementId(textElements[0].id);
+    } else {
+      setActiveElementId(null);
+    }
+  }, [template, textElements]);
 
   const activeElement = textElements.find(el => el.id === activeElementId);
 
@@ -110,7 +133,8 @@ const Editor: React.FC<EditorProps> = ({ referenceImage, template, textElements,
 
   const handleRemixClick = () => {
     const maskDataUrl = maskingCanvasRef.current?.getMaskDataURL() ?? null;
-    onCreativeRemix(remixPrompt, maskDataUrl, creativity, renderingStyle);
+    const allTextContent = textElements.map(el => el.content).join(' ');
+    onCreativeRemix(remixPrompt, maskDataUrl, creativity, renderingStyle, allTextContent);
   };
 
   const getCreativityLabel = () => {
@@ -129,7 +153,7 @@ const Editor: React.FC<EditorProps> = ({ referenceImage, template, textElements,
   };
 
   const SubjectBox: React.FC = () => {
-    if (!template.subject) return null;
+    if (!template?.subject) return null;
     const { x, y, width, height } = template.subject;
     const style: React.CSSProperties = {
       left: `${x}%`,
@@ -151,187 +175,205 @@ const Editor: React.FC<EditorProps> = ({ referenceImage, template, textElements,
 
   return (
     <div className="w-full h-full grid grid-cols-1 lg:grid-cols-12 gap-6" style={{height: 'calc(100vh - 120px)'}}>
-      {/* Left Panel: Reference Image */}
+      {/* Left Panel: Reference Image Uploader */}
       <div className="lg:col-span-3 bg-gray-800 rounded-lg p-4 flex flex-col">
         <h3 className="text-lg font-semibold mb-4 text-gray-300 border-b border-gray-700 pb-2">참조 이미지</h3>
-        <img src={referenceImage} alt="Reference" className="w-full h-auto object-contain rounded-md" />
+        {template && uploadedImage ? (
+           <img src={uploadedImage} alt="Reference" className="w-full h-auto object-contain rounded-md" />
+        ) : (
+          <ImageUploader onImageUpload={onImageUpload} error={error} />
+        )}
       </div>
 
       {/* Center Panel: Canvas */}
       <div className="lg:col-span-6 bg-gray-800 rounded-lg flex flex-col items-center justify-center p-2 gap-4">
-        <div 
-          id="canvas-container" 
-          ref={canvasContainerRef}
-          className="relative w-full aspect-[4/3] bg-cover bg-center bg-gray-900 rounded-md overflow-hidden"
-          style={{ backgroundImage: `url(${template.generatedImageUrl})` }}
-        >
-          {isRemixing && (
-            <div className="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-30 backdrop-blur-sm">
-                <svg className="w-10 h-10 text-white animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p className="mt-4 text-white font-semibold">이미지 생성 중...</p>
-                <p className="text-gray-400 text-sm">AI가 프롬프트와 창의성 설정에 따라 작업 중입니다.</p>
-             </div>
-           )}
-          <SubjectBox />
-          <MaskingCanvas ref={maskingCanvasRef} tool={maskTool} brushSize={brushSize} />
-          {textElements.map(el => (
-            <DraggableText
-              key={el.id}
-              element={el}
-              onUpdate={handleUpdate}
-              onSelect={setActiveElementId}
-              isSelected={el.id === activeElementId}
-              containerRef={canvasContainerRef}
+        {isAnalyzing ? (
+          <LoadingIndicator />
+        ) : template ? (
+          <>
+            <div 
+              id="canvas-container" 
+              ref={canvasContainerRef}
+              className="relative w-full aspect-[4/3] bg-cover bg-center bg-gray-900 rounded-md overflow-hidden"
+              style={{ backgroundImage: `url(${template.generatedImageUrl})` }}
+            >
+              {isRemixing && (
+                <div className="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-30 backdrop-blur-sm">
+                    <svg className="w-10 h-10 text-white animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="mt-4 text-white font-semibold">이미지 생성 중...</p>
+                    <p className="text-gray-400 text-sm">AI가 프롬프트와 창의성 설정에 따라 작업 중입니다.</p>
+                 </div>
+               )}
+              <SubjectBox />
+              <MaskingCanvas ref={maskingCanvasRef} tool={maskTool} brushSize={brushSize} />
+              {textElements.map(el => (
+                <DraggableText
+                  key={el.id}
+                  element={el}
+                  onUpdate={handleUpdate}
+                  onSelect={setActiveElementId}
+                  isSelected={el.id === activeElementId}
+                  containerRef={canvasContainerRef}
+                />
+              ))}
+            </div>
+            <MaskingToolbar
+                activeTool={maskTool}
+                onToolChange={setMaskTool}
+                brushSize={brushSize}
+                onBrushSizeChange={setBrushSize}
+                onClear={() => maskingCanvasRef.current?.clearMask()}
+                onInvert={() => maskingCanvasRef.current?.invertMask()}
             />
-          ))}
-        </div>
-        <MaskingToolbar
-            activeTool={maskTool}
-            onToolChange={setMaskTool}
-            brushSize={brushSize}
-            onBrushSizeChange={setBrushSize}
-            onClear={() => maskingCanvasRef.current?.clearMask()}
-            onInvert={() => maskingCanvasRef.current?.invertMask()}
-        />
+          </>
+        ) : (
+          <div className="text-center text-gray-500">
+             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            <p className="font-semibold">템플릿을 시작하려면</p>
+            <p className="text-sm">왼쪽 패널에서 참조 이미지를 업로드하세요.</p>
+          </div>
+        )}
       </div>
 
       {/* Right Panel: Inspector */}
       <div className="lg:col-span-3 bg-gray-800 rounded-lg p-4 flex flex-col overflow-y-auto">
         <h3 className="text-lg font-semibold mb-4 text-gray-300 border-b border-gray-700 pb-2 sticky top-0 bg-gray-800">속성</h3>
-        {activeElement ? (
-          <div className="space-y-4">
-            <h4 className="text-md font-semibold text-gray-300">텍스트 편집</h4>
-            <div>
-              <label htmlFor="content" className="block text-sm font-medium text-gray-400 mb-1">내용</label>
-              <textarea
-                id="content"
-                name="content"
-                value={activeElement.content}
-                onChange={handleInputChange}
-                rows={4}
-                className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
-              />
-            </div>
-             <div>
-              <label htmlFor="fontFamily" className="block text-sm font-medium text-gray-400 mb-1">글꼴</label>
-              <select
-                id="fontFamily"
-                name="fontFamily"
-                value={activeElement.fontFamily}
-                onChange={handleInputChange}
-                className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
-              >
-                {template.recommendedFonts.map(font => (
-                  <option key={font} value={font}>{font}</option>
-                ))}
-                 <option disabled>---</option>
-                 <option value="Arial, sans-serif">Arial</option>
-                 <option value="Verdana, sans-serif">Verdana</option>
-                 <option value="Georgia, serif">Georgia</option>
-                 <option value="'Times New Roman', serif">Times New Roman</option>
-                 <option value="'Courier New', monospace">Courier New</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+        <div className={`transition-opacity duration-300 ${!template ? 'opacity-50 pointer-events-none' : ''}`}>
+          {activeElement && template ? (
+            <div className="space-y-4">
+              <h4 className="text-md font-semibold text-gray-300">텍스트 편집</h4>
+              <div>
+                <label htmlFor="content" className="block text-sm font-medium text-gray-400 mb-1">내용</label>
+                <textarea
+                  id="content"
+                  name="content"
+                  value={activeElement.content}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+                />
+              </div>
                <div>
-                  <label htmlFor="fontSize" className="block text-sm font-medium text-gray-400 mb-1">글자 크기 (vw)</label>
-                  <input
-                    type="number"
-                    id="fontSize"
-                    name="fontSize"
-                    value={activeElement.fontSize}
-                    onChange={handleInputChange}
-                    step="0.1"
-                    className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
-                  />
-                </div>
+                <label htmlFor="fontFamily" className="block text-sm font-medium text-gray-400 mb-1">글꼴</label>
+                <select
+                  id="fontFamily"
+                  name="fontFamily"
+                  value={activeElement.fontFamily}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+                >
+                  {template.recommendedFonts.map(font => (
+                    <option key={font} value={font}>{font}</option>
+                  ))}
+                   <option disabled>---</option>
+                   <option value="Arial, sans-serif">Arial</option>
+                   <option value="Verdana, sans-serif">Verdana</option>
+                   <option value="Georgia, serif">Georgia</option>
+                   <option value="'Times New Roman', serif">Times New Roman</option>
+                   <option value="'Courier New', monospace">Courier New</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                  <div>
-                    <label htmlFor="color" className="block text-sm font-medium text-gray-400 mb-1">색상</label>
-                    <div className="relative">
-                       <input
-                         type="color"
-                         id="color"
-                         name="color"
-                         value={activeElement.color}
-                         onChange={handleInputChange}
-                         className="w-full h-10 p-1 bg-gray-700 border border-gray-600 rounded-md cursor-pointer"
-                       />
-                    </div>
+                    <label htmlFor="fontSize" className="block text-sm font-medium text-gray-400 mb-1">글자 크기 (vw)</label>
+                    <input
+                      type="number"
+                      id="fontSize"
+                      name="fontSize"
+                      value={activeElement.fontSize}
+                      onChange={handleInputChange}
+                      step="0.1"
+                      className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+                    />
+                  </div>
+                   <div>
+                      <label htmlFor="color" className="block text-sm font-medium text-gray-400 mb-1">색상</label>
+                      <div className="relative">
+                         <input
+                           type="color"
+                           id="color"
+                           name="color"
+                           value={activeElement.color}
+                           onChange={handleInputChange}
+                           className="w-full h-10 p-1 bg-gray-700 border border-gray-600 rounded-md cursor-pointer"
+                         />
+                      </div>
+                  </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">색상 팔레트</label>
+                <div className="flex flex-wrap gap-2">
+                  {template.colorPalette.map(color => (
+                     <button
+                       key={color}
+                       className="w-8 h-8 rounded-full border-2 border-gray-600"
+                       style={{ backgroundColor: color }}
+                       onClick={() => handleUpdate(activeElement.id, { color })}
+                     />
+                  ))}
                 </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">색상 팔레트</label>
-              <div className="flex flex-wrap gap-2">
-                {template.colorPalette.map(color => (
-                   <button
-                     key={color}
-                     className="w-8 h-8 rounded-full border-2 border-gray-600"
-                     style={{ backgroundColor: color }}
-                     onClick={() => handleUpdate(activeElement.id, { color })}
-                   />
-                ))}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-grow flex items-center justify-center text-gray-500">
-            <p>편집할 텍스트를 선택하세요.</p>
-          </div>
-        )}
+          ) : (
+            <div className="text-gray-500 text-sm">
+              <p>편집할 텍스트를 선택하세요.</p>
+            </div>
+          )}
 
-        <div className="mt-4 pt-4 border-t border-gray-700 space-y-4">
-          <h4 className="text-md font-semibold text-gray-300">AI 생성 제어판</h4>
-          <div>
-              <label htmlFor="remixPrompt" className="block text-sm font-medium text-gray-400 mb-1">이미지 프롬프트</label>
-               <input
-                  type="text"
-                  id="remixPrompt"
-                  name="remixPrompt"
-                  value={remixPrompt}
-                  onChange={(e) => setRemixPrompt(e.target.value)}
-                  placeholder="예: '사막에 착륙하는 우주선'"
-                  className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
-              />
-          </div>
-          <div>
-            <label htmlFor="renderingStyle" className="block text-sm font-medium text-gray-400 mb-1">렌더링 스타일</label>
-            <select
-              id="renderingStyle"
-              name="renderingStyle"
-              value={renderingStyle}
-              onChange={(e) => setRenderingStyle(e.target.value)}
-              className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+          <div className="mt-4 pt-4 border-t border-gray-700 space-y-4">
+            <h4 className="text-md font-semibold text-gray-300">AI 생성 제어판</h4>
+            <div>
+                <label htmlFor="remixPrompt" className="block text-sm font-medium text-gray-400 mb-1">이미지 프롬프트</label>
+                 <input
+                    type="text"
+                    id="remixPrompt"
+                    name="remixPrompt"
+                    value={remixPrompt}
+                    onChange={(e) => setRemixPrompt(e.target.value)}
+                    placeholder="예: '사막에 착륙하는 우주선'"
+                    className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+                />
+            </div>
+            <div>
+              <label htmlFor="renderingStyle" className="block text-sm font-medium text-gray-400 mb-1">렌더링 스타일</label>
+              <select
+                id="renderingStyle"
+                name="renderingStyle"
+                value={renderingStyle}
+                onChange={(e) => setRenderingStyle(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 border border-gray-600"
+              >
+                {Object.entries(renderingStyles).map(([key, value]) => (
+                  <option key={key} value={key}>{value}</option>
+                ))}
+              </select>
+            </div>
+             <div>
+                <label htmlFor="creativity" className="block text-sm font-medium text-gray-400 mb-1">
+                  창의성: <span className="font-bold text-blue-400">{getCreativityLabel().title}</span>
+                </label>
+                <input
+                    id="creativity"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={creativity}
+                    onChange={(e) => setCreativity(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                />
+                <p className="text-xs text-gray-500 mt-1">{getCreativityLabel().description}</p>
+            </div>
+            <button
+              onClick={handleRemixClick}
+              disabled={isRemixing || !remixPrompt}
+              className="w-full px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-500 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
             >
-              {Object.entries(renderingStyles).map(([key, value]) => (
-                <option key={key} value={key}>{value}</option>
-              ))}
-            </select>
+              {isRemixing ? '생성 중...' : '이미지 생성'}
+            </button>
           </div>
-           <div>
-              <label htmlFor="creativity" className="block text-sm font-medium text-gray-400 mb-1">
-                창의성: <span className="font-bold text-blue-400">{getCreativityLabel().title}</span>
-              </label>
-              <input
-                  id="creativity"
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={creativity}
-                  onChange={(e) => setCreativity(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-              />
-              <p className="text-xs text-gray-500 mt-1">{getCreativityLabel().description}</p>
-          </div>
-          <button
-            onClick={handleRemixClick}
-            disabled={isRemixing || !remixPrompt}
-            className="w-full px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-500 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
-          >
-            {isRemixing ? '생성 중...' : '이미지 생성'}
-          </button>
         </div>
       </div>
     </div>
